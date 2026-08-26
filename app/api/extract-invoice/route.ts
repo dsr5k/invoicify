@@ -1,36 +1,41 @@
-import { NextRequest, NextResponse } from "next/server"
+import { GoogleGenAI } from "@google/genai"
+import { NextResponse } from "next/server"
 
-export const maxDuration = 60
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY,
+})
 
-type LineItem = {
-  description: string
-  quantity: number
-  unit_price: number
-  total: number
-}
-
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
-    const formData = await request.formData()
-    const file = formData.get("file") as File | null
-
-    if (!file) {
+    // Check API key
+    if (!process.env.GEMINI_API_KEY) {
       return NextResponse.json(
-        { error: "No file provided" },
-        { status: 400 }
-      )
-    }
-
-    const apiKey = process.env.OPENAI_API_KEY
-
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: "OPENAI_API_KEY not set" },
+        {
+          error: "GEMINI_API_KEY is not configured on the server.",
+        },
         { status: 500 }
       )
     }
 
-    const allowedTypes = [
+    // Read uploaded form
+    const formData = await request.formData()
+
+    const file =
+      (formData.get("file") as File | null) ||
+      (formData.get("invoice") as File | null) ||
+      (formData.get("document") as File | null)
+
+    if (!file) {
+      return NextResponse.json(
+        {
+          error: "No invoice file was uploaded.",
+        },
+        { status: 400 }
+      )
+    }
+
+    // Supported formats
+    const supportedTypes = [
       "application/pdf",
       "image/jpeg",
       "image/jpg",
@@ -38,331 +43,162 @@ export async function POST(request: NextRequest) {
       "image/webp",
     ]
 
-    const mimeType =
-      file.type ||
-      (file.name.toLowerCase().endsWith(".pdf")
-        ? "application/pdf"
-        : "image/jpeg")
-
-    if (!allowedTypes.includes(mimeType)) {
+    if (!supportedTypes.includes(file.type)) {
       return NextResponse.json(
         {
-          error:
-            "Unsupported file type. Please upload PDF, JPG, JPEG, PNG, or WEBP.",
+          error: `Unsupported file type: ${file.type}. Please upload PDF, JPG, PNG or WEBP.`,
         },
         { status: 400 }
       )
     }
 
-    const bytes = await file.arrayBuffer()
+    // Keep initial testing reasonably sized.
+    // Gemini supports inline PDF input up to 50 MB.
+    if (file.size > 50 * 1024 * 1024) {
+      return NextResponse.json(
+        {
+          error: "File is too large. Maximum supported size is 50 MB.",
+        },
+        { status: 400 }
+      )
+    }
 
-    console.log(
-      `[extract] File: ${file.name}, Type: ${mimeType}, Size: ${Math.round(
-        bytes.byteLength / 1024
-      )}KB`
-    )
-
-    const base64 = Buffer.from(bytes).toString("base64")
+    const arrayBuffer = await file.arrayBuffer()
+    const base64Data = Buffer.from(arrayBuffer).toString("base64")
 
     const prompt = `
-You are an expert invoice and receipt data extraction system.
+You are an expert invoice data extraction system.
 
-Analyze the uploaded document extremely carefully.
+Analyze the uploaded invoice carefully.
 
-Extract the REAL data visible in the invoice. Do not invent, estimate,
-guess, or replace missing values with random values.
+Extract the invoice information and return ONLY valid JSON.
 
-Read:
+Do not use markdown.
+Do not wrap the JSON in backticks.
+Do not invent information.
+If a field is missing, return null.
 
-1. Vendor/company name
-2. Invoice number
-3. Invoice date
-4. Due date
-5. Every line item
-6. Quantity for every item
-7. Unit price for every item
-8. Line total for every item
-9. Subtotal
-10. Tax/GST amount
-11. Grand total/final amount
-12. Currency
-13. Category
-14. Notes
-15. Payment terms
-16. Bank/payment details if visible
-
-IMPORTANT RULES:
-
-- Read the actual numbers shown in the document.
-- Preserve ALL line items.
-- Do not combine multiple items into one.
-- If an item quantity is not visible, use 1.
-- If unit price is not separately visible but line total is visible,
-  use the line total as unit_price when quantity is 1.
-- Never make up invoice numbers.
-- Never use placeholder values.
-- Do not return markdown.
-- Return ONLY valid JSON.
-
-Use this EXACT structure:
+Return exactly this structure:
 
 {
-  "vendor_name": "actual vendor name or null",
-  "invoice_number": "actual invoice number or null",
-  "date": "YYYY-MM-DD or null",
-  "due_date": "YYYY-MM-DD or null",
-  "subtotal": 0,
-  "tax_amount": 0,
-  "total_amount": 0,
-  "currency": "INR",
-  "category": "travel",
-  "line_items": [
+  "vendor": {
+    "name": null,
+    "gstin": null,
+    "email": null,
+    "phone": null,
+    "address": null
+  },
+  "customer": {
+    "name": null,
+    "gstin": null,
+    "email": null,
+    "phone": null,
+    "address": null
+  },
+  "invoice": {
+    "number": null,
+    "date": null,
+    "due_date": null,
+    "currency": null,
+    "po_number": null
+  },
+  "items": [
     {
-      "description": "actual item description",
-      "quantity": 1,
-      "unit_price": 0,
-      "total": 0
+      "description": null,
+      "quantity": null,
+      "unit_price": null,
+      "tax_rate": null,
+      "amount": null
     }
   ],
-  "notes": "notes, payment terms, bank details, or null"
+  "summary": {
+    "subtotal": null,
+    "discount": null,
+    "tax": null,
+    "total": null
+  },
+  "payment": {
+    "status": null,
+    "method": null,
+    "terms": null
+  },
+  "notes": null
 }
 
-CATEGORY must be exactly one of:
-
-travel
-food
-office_supplies
-software
-marketing
-utilities
-rent
-salaries
-services
-other
-
-DATES:
-Convert dates to YYYY-MM-DD when the date is clear.
-If no date exists, return null.
-
-NUMBERS:
-Return numbers only.
-For example:
-₹15,000.00 becomes 15000
-18% GST amount ₹2,700 becomes 2700
-
-FINAL CHECK:
-Before returning JSON, verify that:
-
-subtotal + tax_amount approximately equals total_amount
-
-Do not change the actual invoice values just to make this equation match.
-If the document contains discounts, shipping, rounding, or other charges,
-preserve the actual values from the invoice.
+Important:
+- Preserve invoice numbers exactly.
+- Preserve GSTIN exactly when visible.
+- Extract every line item.
+- Do not combine separate line items.
+- Quantity should be numeric.
+- Unit price should be numeric.
+- Amount should be numeric.
+- Tax rate should be numeric.
+- subtotal, discount, tax and total should be numeric.
+- Detect INR, USD, EUR, GBP etc.
+- For Indian invoices, distinguish CGST/SGST/IGST when possible and include the combined tax amount in "tax".
 `
 
-    let inputContent: any[] = [
-      {
-        type: "input_text",
-        text: prompt,
-      },
-    ]
-
-    // IMAGE INPUT
-    if (mimeType.startsWith("image/")) {
-      inputContent.push({
-        type: "input_image",
-        image_url: `data:${mimeType};base64,${base64}`,
-        detail: "high",
-      })
-    }
-
-    // PDF INPUT
-    if (mimeType === "application/pdf") {
-      inputContent.push({
-        type: "input_file",
-        filename: file.name,
-        file_data: `data:application/pdf;base64,${base64}`,
-      })
-    }
-
-    console.log("[extract] Sending document to OpenAI...")
-
-    const response = await fetch(
-      "https://api.openai.com/v1/responses",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: "gpt-4.1-mini",
-
-          input: [
-            {
-              role: "user",
-              content: inputContent,
-            },
-          ],
-
-          temperature: 0.1,
-
-          max_output_tokens: 8000,
-
-          text: {
-            format: {
-              type: "json_object",
-            },
+    const response = await ai.models.generateContent({
+      model: "gemini-3.6-flash",
+      contents: [
+        {
+          inlineData: {
+            mimeType: file.type,
+            data: base64Data,
           },
-        }),
-      }
-    )
+        },
+        {
+          text: prompt,
+        },
+      ],
+      config: {
+        responseMimeType: "application/json",
+      },
+    })
 
-    if (!response.ok) {
-      const errText = await response.text()
+    const text = response.text?.trim()
 
-      console.error(
-        "[extract] OpenAI error:",
-        response.status,
-        errText.slice(0, 1000)
-      )
-
+    if (!text) {
       return NextResponse.json(
         {
-          error: `OpenAI error: ${response.status}`,
-          raw: errText.slice(0, 1000),
+          error: "Gemini returned an empty response.",
         },
-        { status: 500 }
+        { status: 502 }
       )
     }
 
-    const responseData = await response.json()
-
-    console.log("[extract] OpenAI response received")
-
-    let outputText = ""
-
-    if (responseData.output_text) {
-      outputText = responseData.output_text
-    }
-
-    // Fallback extraction from Responses API output
-    if (!outputText && Array.isArray(responseData.output)) {
-      for (const output of responseData.output) {
-        if (!Array.isArray(output.content)) continue
-
-        for (const content of output.content) {
-          if (
-            content.type === "output_text" &&
-            typeof content.text === "string"
-          ) {
-            outputText += content.text
-          }
-        }
-      }
-    }
-
-    if (!outputText) {
-      console.error(
-        "[extract] No text returned:",
-        JSON.stringify(responseData).slice(0, 1000)
-      )
-
-      return NextResponse.json(
-        {
-          error: "OpenAI could not extract data from this document",
-          raw: JSON.stringify(responseData).slice(0, 1000),
-        },
-        { status: 500 }
-      )
-    }
-
-    console.log(
-      "[extract] OpenAI response:",
-      outputText.slice(0, 1000)
-    )
-
-    // Clean possible markdown fences just in case
-    let cleaned = outputText
-      .trim()
-      .replace(/^```json\s*/i, "")
-      .replace(/^```\s*/i, "")
-      .replace(/\s*```$/i, "")
-      .trim()
-
-    let extracted: any
+    let extractedData
 
     try {
-      extracted = JSON.parse(cleaned)
+      extractedData = JSON.parse(text)
     } catch {
-      const jsonMatch = cleaned.match(/\{[\s\S]*\}/)
+      console.error("Gemini returned invalid JSON:", text)
 
-      if (!jsonMatch) {
-        return NextResponse.json(
-          {
-            error: "Failed to parse OpenAI response as JSON",
-            raw: cleaned.slice(0, 1000),
-          },
-          { status: 500 }
-        )
-      }
-
-      try {
-        extracted = JSON.parse(jsonMatch[0])
-      } catch {
-        return NextResponse.json(
-          {
-            error: "Failed to parse extracted invoice JSON",
-            raw: cleaned.slice(0, 1000),
-          },
-          { status: 500 }
-        )
-      }
+      return NextResponse.json(
+        {
+          error: "Gemini returned invalid JSON.",
+          raw: text,
+        },
+        { status: 502 }
+      )
     }
-
-    // Normalize line items
-    if (!Array.isArray(extracted.line_items)) {
-      extracted.line_items = []
-    }
-
-    extracted.line_items = extracted.line_items.map(
-      (item: Partial<LineItem>) => ({
-        description: item.description || "Unknown item",
-        quantity: Number(item.quantity) || 1,
-        unit_price: Number(item.unit_price) || 0,
-        total: Number(item.total) || 0,
-      })
-    )
-
-    // Normalize numeric values
-    extracted.subtotal = Number(extracted.subtotal) || 0
-    extracted.tax_amount = Number(extracted.tax_amount) || 0
-    extracted.total_amount = Number(extracted.total_amount) || 0
-
-    // Defaults without replacing actual extracted values
-    extracted.currency = extracted.currency || "INR"
-    extracted.category = extracted.category || "other"
-
-    console.log("[extract] SUCCESS:", {
-      vendor: extracted.vendor_name,
-      invoice_number: extracted.invoice_number,
-      subtotal: extracted.subtotal,
-      tax: extracted.tax_amount,
-      total: extracted.total_amount,
-      items: extracted.line_items.length,
-    })
 
     return NextResponse.json({
       success: true,
-      data: extracted,
-      debug: outputText.slice(0, 1000),
+      filename: file.name,
+      mimeType: file.type,
+      data: extractedData,
     })
-  } catch (error: any) {
-    console.error("[extract] Server error:", error)
+  } catch (error) {
+    console.error("Invoice extraction error:", error)
 
     return NextResponse.json(
       {
-        error: error?.message || "Server error",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to process invoice.",
       },
       { status: 500 }
     )
