@@ -39,19 +39,19 @@ export default async function DashboardPage() {
 
   const [
     { data: invoices },
-    { data: customers },
+    { data: vendors },
     { data: expenses },
     { data: profile },
   ] = await Promise.all([
-    supabase.from("invoices").select("*, customers(name)").eq("user_id", user.id).order("created_at", { ascending: false }),
-    supabase.from("customers").select("id, name").eq("user_id", user.id),
+    supabase.from("invoices").select("*, vendors(name)").eq("user_id", user.id).order("created_at", { ascending: false }),
+    supabase.from("vendors").select("id, name").eq("user_id", user.id),
     supabase.from("expenses").select("amount, category, date, description").eq("user_id", user.id).order("date", { ascending: false }),
     supabase.from("profiles").select("business_name").eq("id", user.id).single(),
   ])
 
   const allInvoices = invoices ?? []
   const allExpenses = expenses ?? []
-  const allCustomers = customers ?? []
+  const allVendors = vendors ?? []
 
   // Stats
   const totalRevenue = allInvoices.filter(i => i.status === "paid").reduce((s, i) => s + Number(i.total_amount), 0)
@@ -83,7 +83,7 @@ export default async function DashboardPage() {
     { label: "Total Revenue", value: formatINR(totalRevenue), icon: IndianRupee, bg: "bg-green-500/10", iconColor: "text-green-400", sub: "From paid invoices", href: "/dashboard/reports" },
     { label: "Pending", value: formatINR(pendingAmount), icon: Clock, bg: "bg-yellow-500/10", iconColor: "text-yellow-400", sub: "Awaiting payment", href: "/dashboard/invoices" },
     { label: "Total Invoices", value: allInvoices.length.toString(), icon: FileText, bg: "bg-blue-500/10", iconColor: "text-blue-400", sub: `${overdueInvoices.length} overdue`, href: "/dashboard/invoices" },
-    { label: "Customers", value: allCustomers.length.toString(), icon: Users, bg: "bg-violet-500/10", iconColor: "text-violet-400", sub: "Total clients", href: "/dashboard/customers" },
+    { label: "Vendors", value: allVendors.length.toString(), icon: Users, bg: "bg-violet-500/10", iconColor: "text-violet-400", sub: "Total clients", href: "/dashboard/vendors" },
   ]
 
   return (
@@ -229,7 +229,7 @@ export default async function DashboardPage() {
                     <div>
                       <p className="text-sm font-medium">{invoice.invoice_number}</p>
                       <p className="text-xs text-white/30">
-                        {invoice.customers?.name ?? "No customer"} · {timeAgo(invoice.created_at)}
+                        {invoice.vendors?.name ?? "No vendor"} · {timeAgo(invoice.created_at)}
                       </p>
                     </div>
                   </div>
@@ -265,11 +265,11 @@ export default async function DashboardPage() {
                 </div>
                 <span className="text-sm text-white/60 group-hover:text-white transition-colors">AI Upload Invoices</span>
               </Link>
-              <Link href="/dashboard/customers" className="flex items-center gap-3 p-3 rounded-lg hover:bg-white/5 transition-colors group">
+              <Link href="/dashboard/vendors" className="flex items-center gap-3 p-3 rounded-lg hover:bg-white/5 transition-colors group">
                 <div className="h-8 w-8 rounded-lg bg-green-500/10 flex items-center justify-center">
                   <Users className="h-4 w-4 text-green-400" />
                 </div>
-                <span className="text-sm text-white/60 group-hover:text-white transition-colors">Add Customer</span>
+                <span className="text-sm text-white/60 group-hover:text-white transition-colors">Add Vendor</span>
               </Link>
               <Link href="/dashboard/reports" className="flex items-center gap-3 p-3 rounded-lg hover:bg-white/5 transition-colors group">
                 <div className="h-8 w-8 rounded-lg bg-yellow-500/10 flex items-center justify-center">

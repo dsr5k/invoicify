@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { createClient } from "@/app/utils/supabase/client"
-import { Button } from "@/components/ui/button"
+import { Button } from "@/components/ui/Button"
 import {
   ArrowLeft,
   Plus,

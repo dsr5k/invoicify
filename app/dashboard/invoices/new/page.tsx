@@ -19,7 +19,7 @@ import {
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 
-type Customer = {
+type Vendor = {
   id: string
   name: string
   email?: string | null
@@ -130,7 +130,7 @@ export default function NewInvoicePage() {
   const supabase = createClient()
   const router = useRouter()
 
-  const [customers, setCustomers] = useState<Customer[]>([])
+  const [vendors, setVendors] = useState<Vendor[]>([])
   const [profile, setProfile] = useState<Profile | null>(null)
 
   const [loading, setLoading] = useState(true)
@@ -139,9 +139,9 @@ export default function NewInvoicePage() {
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
 
-  const [selectedCustomerId, setSelectedCustomerId] = useState("")
+  const [selectedVendorId, setSelectedVendorId] = useState("")
   const [businessState, setBusinessState] = useState("")
-  const [customerState, setCustomerState] = useState("")
+  const [vendorState, setVendorState] = useState("")
   const [placeOfSupply, setPlaceOfSupply] = useState("")
 
   const [invoiceNumber, setInvoiceNumber] = useState("")
@@ -203,22 +203,22 @@ export default function NewInvoicePage() {
       setProfile(loadedProfile)
 
       /*
-       * Load customers
+       * Load vendors
        */
 
-      const { data: customerData, error: customerError } =
+      const { data: vendorData, error: vendorError } =
         await supabase
-          .from("customers")
+          .from("vendors")
           .select("*")
           .eq("user_id", user.id)
           .order("name", { ascending: true })
 
-      if (customerError) {
-        console.error("Customer loading error:", customerError)
-        throw new Error("Could not load customers.")
+      if (vendorError) {
+        console.error("Vendor loading error:", vendorError)
+        throw new Error("Could not load vendors.")
       }
 
-      setCustomers((customerData as Customer[]) || [])
+      setVendors((vendorData as Vendor[]) || [])
 
       /*
        * Profile defaults
@@ -318,22 +318,22 @@ export default function NewInvoicePage() {
 
   /*
    * ------------------------------------------------------------
-   * CUSTOMER
+   * VENDOR
    * ------------------------------------------------------------
    */
 
-  function handleCustomerChange(customerId: string) {
-    setSelectedCustomerId(customerId)
+  function handleVendorChange(vendorId: string) {
+    setSelectedVendorId(vendorId)
 
-    const customer = customers.find(
-      (item) => item.id === customerId
+    const vendor = vendors.find(
+      (item) => item.id === vendorId
     )
 
-    if (customer) {
-      setCustomerState(customer.state || "")
-      setPlaceOfSupply(customer.state || "")
+    if (vendor) {
+      setVendorState(vendor.state || "")
+      setPlaceOfSupply(vendor.state || "")
     } else {
-      setCustomerState("")
+      setVendorState("")
       setPlaceOfSupply("")
     }
   }
@@ -345,27 +345,27 @@ export default function NewInvoicePage() {
    */
 
   const gstType = useMemo(() => {
-    if (!businessState || !customerState) {
+    if (!businessState || !vendorState) {
       return null
     }
 
     return normalizeState(businessState) ===
-      normalizeState(customerState)
+      normalizeState(vendorState)
       ? "intra"
       : "inter"
-  }, [businessState, customerState])
+  }, [businessState, vendorState])
 
   /*
    * ------------------------------------------------------------
-   * SELECTED CUSTOMER
+   * SELECTED VENDOR
    * ------------------------------------------------------------
    */
 
-  const selectedCustomer = useMemo(() => {
-    return customers.find(
-      (customer) => customer.id === selectedCustomerId
+  const selectedVendor = useMemo(() => {
+    return vendors.find(
+      (vendor) => vendor.id === selectedVendorId
     )
-  }, [customers, selectedCustomerId])
+  }, [vendors, selectedVendorId])
 
   /*
    * ------------------------------------------------------------
@@ -562,16 +562,16 @@ export default function NewInvoicePage() {
       return "Issue date is required."
     }
 
-    if (!selectedCustomerId) {
-      return "Please select a customer."
+    if (!selectedVendorId) {
+      return "Please select a vendor."
     }
 
     if (!businessState) {
       return "Please select your business state."
     }
 
-    if (!customerState) {
-      return "Please select the customer's state."
+    if (!vendorState) {
+      return "Please select the vendor's state."
     }
 
     if (!placeOfSupply) {
@@ -688,7 +688,7 @@ export default function NewInvoicePage() {
           .from("invoices")
           .insert({
             user_id: user.id,
-            customer_id: selectedCustomerId,
+            vendor_id: selectedVendorId,
 
             invoice_number:
               invoiceNumber.trim(),
@@ -745,8 +745,8 @@ export default function NewInvoicePage() {
             business_state:
               businessState,
 
-            customer_state:
-              customerState,
+            vendor_state:
+              vendorState,
 
             gst_type:
               gstType,
@@ -994,7 +994,7 @@ export default function NewInvoicePage() {
           </div>
         )}
 
-        {/* BUSINESS / CUSTOMER */}
+        {/* BUSINESS / VENDOR */}
 
         <div className="grid lg:grid-cols-2 gap-6">
 
@@ -1076,7 +1076,7 @@ export default function NewInvoicePage() {
             </div>
           </div>
 
-          {/* CUSTOMER / GST */}
+          {/* VENDOR / GST */}
 
           <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 space-y-5">
 
@@ -1084,7 +1084,7 @@ export default function NewInvoicePage() {
               <MapPin className="h-5 w-5 text-blue-400" />
 
               <h2 className="font-semibold">
-                Customer & GST
+                Vendor & GST
               </h2>
             </div>
 
@@ -1127,17 +1127,17 @@ export default function NewInvoicePage() {
                 </select>
               </div>
 
-              {/* CUSTOMER */}
+              {/* VENDOR */}
 
               <div>
                 <label className="block text-xs text-white/40 mb-2">
-                  Customer
+                  Vendor
                 </label>
 
                 <select
-                  value={selectedCustomerId}
+                  value={selectedVendorId}
                   onChange={(e) =>
-                    handleCustomerChange(
+                    handleVendorChange(
                       e.target.value
                     )
                   }
@@ -1147,34 +1147,34 @@ export default function NewInvoicePage() {
                     value=""
                     className="bg-[#0a0a0f]"
                   >
-                    Select customer
+                    Select vendor
                   </option>
 
-                  {customers.map(
-                    (customer) => (
+                  {vendors.map(
+                    (vendor) => (
                       <option
-                        key={customer.id}
-                        value={customer.id}
+                        key={vendor.id}
+                        value={vendor.id}
                         className="bg-[#0a0a0f]"
                       >
-                        {customer.name}
+                        {vendor.name}
                       </option>
                     )
                   )}
                 </select>
               </div>
 
-              {/* CUSTOMER STATE */}
+              {/* VENDOR STATE */}
 
               <div>
                 <label className="block text-xs text-white/40 mb-2">
-                  Customer State
+                  Vendor State
                 </label>
 
                 <select
-                  value={customerState}
+                  value={vendorState}
                   onChange={(e) => {
-                    setCustomerState(
+                    setVendorState(
                       e.target.value
                     )
 
@@ -1320,9 +1320,9 @@ export default function NewInvoicePage() {
           </div>
         </div>
 
-        {/* CUSTOMER INFO */}
+        {/* VENDOR INFO */}
 
-        {selectedCustomer && (
+        {selectedVendor && (
           <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
 
             <div className="flex items-center gap-2 mb-4">
@@ -1337,11 +1337,11 @@ export default function NewInvoicePage() {
 
               <div>
                 <p className="text-xs text-white/30">
-                  Customer
+                  Vendor
                 </p>
 
                 <p className="text-sm font-medium mt-1">
-                  {selectedCustomer.name}
+                  {selectedVendor.name}
                 </p>
               </div>
 
@@ -1351,7 +1351,7 @@ export default function NewInvoicePage() {
                 </p>
 
                 <p className="text-sm text-white/60 mt-1">
-                  {selectedCustomer.email || "—"}
+                  {selectedVendor.email || "—"}
                 </p>
               </div>
 
@@ -1361,7 +1361,7 @@ export default function NewInvoicePage() {
                 </p>
 
                 <p className="text-sm text-white/60 mt-1">
-                  {selectedCustomer.phone || "—"}
+                  {selectedVendor.phone || "—"}
                 </p>
               </div>
 
@@ -1371,7 +1371,7 @@ export default function NewInvoicePage() {
                 </p>
 
                 <p className="text-sm text-white/60 mt-1">
-                  {selectedCustomer.address || "—"}
+                  {selectedVendor.address || "—"}
                 </p>
               </div>
 

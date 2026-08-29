@@ -25,8 +25,8 @@ const navItems = [
     icon: FileText,
   },
   {
-    href: "/dashboard/customers",
-    label: "Customers",
+    href: "/dashboard/vendors",
+    label: "Vendors",
     icon: Users,
   },
   {

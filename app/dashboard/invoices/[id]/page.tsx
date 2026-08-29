@@ -13,7 +13,7 @@ import Link from "next/link"
 type Invoice = {
   id: string; invoice_number: string; status: string; issue_date: string;
   due_date: string | null; total_amount: number; currency: string; notes: string | null;
-  customers: { name: string; email: string | null; phone: string | null; address: string | null; gstin: string | null } | null
+  vendors: { name: string; email: string | null; phone: string | null; address: string | null; gstin: string | null } | null
 }
 type LineItem = { id: string; description: string; quantity: number; unit_price: number; total: number }
 type Profile = {
@@ -51,7 +51,7 @@ export default function InvoiceDetailPage() {
       if (!user) return
 
       const [{ data: inv }, { data: li }, { data: prof }] = await Promise.all([
-        supabase.from("invoices").select("*, customers(name, email, phone, address, gstin)").eq("id", id).single(),
+        supabase.from("invoices").select("*, vendors(name, email, phone, address, gstin)").eq("id", id).single(),
         supabase.from("line_items").select("*").eq("invoice_id", id).order("sort_order"),
         supabase.from("profiles").select("*").eq("id", user.id).single(),
       ])
@@ -157,7 +157,7 @@ export default function InvoiceDetailPage() {
           </Link>
           <div>
             <h1 className="text-2xl font-bold">{invoice.invoice_number}</h1>
-            <p className="text-white/40 text-sm mt-0.5">{invoice.customers?.name || "No customer"}</p>
+            <p className="text-white/40 text-sm mt-0.5">{invoice.vendors?.name || "No vendor"}</p>
           </div>
           <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-medium capitalize ${sc.bg} ${sc.color}`}>
             <StatusIcon className="h-3 w-3" />
@@ -218,11 +218,11 @@ export default function InvoiceDetailPage() {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "32px", marginBottom: "32px" }}>
             <div>
               <p style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "1.5px", color: "#999", fontWeight: 600, marginBottom: "8px" }}>Bill To</p>
-              <p style={{ fontSize: "16px", fontWeight: 600, color: "#111" }}>{invoice.customers?.name || "—"}</p>
-              {invoice.customers?.email && <p style={{ fontSize: "12px", color: "#666", marginTop: "2px" }}>{invoice.customers.email}</p>}
-              {invoice.customers?.phone && <p style={{ fontSize: "12px", color: "#666" }}>{invoice.customers.phone}</p>}
-              {invoice.customers?.address && <p style={{ fontSize: "12px", color: "#666" }}>{invoice.customers.address}</p>}
-              {invoice.customers?.gstin && <p style={{ fontSize: "12px", color: "#666" }}>GSTIN: {invoice.customers.gstin}</p>}
+              <p style={{ fontSize: "16px", fontWeight: 600, color: "#111" }}>{invoice.vendors?.name || "—"}</p>
+              {invoice.vendors?.email && <p style={{ fontSize: "12px", color: "#666", marginTop: "2px" }}>{invoice.vendors.email}</p>}
+              {invoice.vendors?.phone && <p style={{ fontSize: "12px", color: "#666" }}>{invoice.vendors.phone}</p>}
+              {invoice.vendors?.address && <p style={{ fontSize: "12px", color: "#666" }}>{invoice.vendors.address}</p>}
+              {invoice.vendors?.gstin && <p style={{ fontSize: "12px", color: "#666" }}>GSTIN: {invoice.vendors.gstin}</p>}
             </div>
             <div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>

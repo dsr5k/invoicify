@@ -14,7 +14,7 @@ type Invoice = {
   due_date: string | null
   total_amount: number
   created_at: string
-  customers: { name: string } | null
+  vendors: { name: string } | null
 }
 
 const statusColors: Record<string, string> = {
@@ -42,7 +42,7 @@ export default function InvoicesPage() {
     if (!user) return
     const { data } = await supabase
       .from("invoices")
-      .select("*, customers(name)")
+      .select("*, vendors(name)")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
     setInvoices(data ?? [])
@@ -130,7 +130,7 @@ export default function InvoicesPage() {
                   <div>
                     <p className="text-sm font-medium">{invoice.invoice_number}</p>
                     <p className="text-xs text-white/30">
-                      {invoice.customers?.name ?? "No customer"} · {new Date(invoice.issue_date).toLocaleDateString("en-IN")}
+                      {invoice.vendors?.name ?? "No vendor"} · {new Date(invoice.issue_date).toLocaleDateString("en-IN")}
                     </p>
                   </div>
                 </div>

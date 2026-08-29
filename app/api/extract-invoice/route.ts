@@ -1,281 +1,658 @@
 import { NextRequest, NextResponse } from "next/server"
+import { GoogleGenAI } from "@google/genai"
 
-export const maxDuration = 60
-export const runtime = "nodejs"
+type LineItem = {
+  description: string
+  quantity: number
+  unit_price: number
+  total: number
+}
 
-const GEMINI_MODEL =
-  process.env.GEMINI_MODEL || "gemini-3.1-flash-lite"
+type Invoice = {
+  vendor_name: string
+  invoice_number: string
+  date: string
+  due_date: string | null
 
-const ALLOWED_TYPES = new Set([
-  "application/pdf",
-  "image/jpeg",
-  "image/jpg",
-  "image/png",
-  "image/webp",
-  "image/heic",
-  "image/heif",
-])
+  subtotal: number
+  discount: number
+  tax_amount: number
+  total_amount: number
 
-export async function POST(request: NextRequest) {
+  currency: string
+  category: string
+
+  tax_details: {
+    cgst: number
+    sgst: number
+    igst: number
+    other_tax: number
+  }
+
+  line_items: LineItem[]
+
+  notes: string | null
+
+  source_pages: number[]
+
+  validation: {
+    calculated_total: number
+    difference: number
+    status: "verified" | "review"
+  }
+}
+
+export async function POST(request: Request) {
   try {
-    const formData = await request.formData()
-    const file = formData.get("file") as File | null
+    console.log("========================================")
+    console.log("INVOICE BATCH EXTRACTION START")
+    console.log("========================================")
 
-    if (!file) {
-      return NextResponse.json(
-        { error: "No file provided" },
-        { status: 400 }
-      )
-    }
+    // ---------------------------------------------------------
+    // 1. GEMINI API KEY
+    // ---------------------------------------------------------
 
     const apiKey = process.env.GEMINI_API_KEY
+    console.log("GEMINI_API_KEY:" ,apiKey)
 
     if (!apiKey) {
       return NextResponse.json(
-        { error: "GEMINI_API_KEY is not configured" },
+        {
+          success: false,
+          error: "GEMINI_API_KEY is missing",
+        },
         { status: 500 }
       )
     }
 
-    const mimeType = file.type || "application/pdf"
+    // ---------------------------------------------------------
+    // 2. RECEIVE FILE
+    // ---------------------------------------------------------
 
-    if (!ALLOWED_TYPES.has(mimeType)) {
+    const formData = await request.formData()
+
+    const file = formData.get("file") as File | null
+
+    if (!file) {
       return NextResponse.json(
         {
-          error:
-            "Unsupported file type. Please upload PDF, JPG, JPEG, PNG, WEBP, HEIC, or HEIF.",
+          success: false,
+          error: "No file received",
         },
         { status: 400 }
       )
     }
 
-    const bytes = await file.arrayBuffer()
+    console.log("File:", file.name)
+    console.log("Type:", file.type)
+    console.log("Size:", file.size)
 
-    // Protect server/API from extremely large uploads
-    const MAX_FILE_SIZE = 20 * 1024 * 1024
+    // ---------------------------------------------------------
+    // 3. VALIDATE FILE TYPE
+    // ---------------------------------------------------------
 
-    if (bytes.byteLength > MAX_FILE_SIZE) {
+    const allowedTypes = [
+      "application/pdf",
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
+      "image/webp",
+    ]
+
+    if (!allowedTypes.includes(file.type)) {
       return NextResponse.json(
         {
-          error: "File is too large. Maximum supported size is 20MB.",
+          success: false,
+          error: `Unsupported file type: ${file.type}`,
         },
         { status: 400 }
       )
     }
 
-    const base64 = Buffer.from(bytes).toString("base64")
+    // ---------------------------------------------------------
+    // 4. FILE SIZE
+    // ---------------------------------------------------------
 
-    console.log("[extract] Starting Gemini extraction:", {
-      file: file.name,
-      type: mimeType,
-      sizeKB: Math.round(bytes.byteLength / 1024),
-      model: GEMINI_MODEL,
+    const MAX_FILE_SIZE = 50 * 1024 * 1024
+
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "File is larger than 50 MB",
+        },
+        { status: 400 }
+      )
+    }
+
+    // ---------------------------------------------------------
+    // 5. CONVERT FILE TO BASE64
+    // ---------------------------------------------------------
+
+    const buffer = Buffer.from(await file.arrayBuffer())
+
+    const base64 = buffer.toString("base64")
+
+    // ---------------------------------------------------------
+    // 6. GEMINI
+    // ---------------------------------------------------------
+
+    const ai = new GoogleGenAI({
+      apiKey,
     })
 
+    // ---------------------------------------------------------
+    // 7. EXTRACTION PROMPT
+    // ---------------------------------------------------------
+
     const prompt = `
-You are an expert invoice and GST document extraction engine.
+You are the invoice/document extraction engine for an accounting application.
 
-Analyze the uploaded invoice/document carefully.
+IMPORTANT:
 
-Extract ONLY information that actually exists in the document.
-Do not invent, estimate, hallucinate, or replace missing values with zero.
+The uploaded file may contain:
+
+- one invoice
+- multiple invoices
+- multiple bills
+- multiple receipts
+- multiple pages belonging to different invoices
+
+You MUST identify every separate invoice/bill/receipt in the uploaded document.
+
+DO NOT combine multiple invoices into one invoice.
+
+For example:
+
+If a PDF contains 10 separate invoices, return 10 objects inside "documents".
+
+Each document must be completely independent.
 
 Return ONLY valid JSON.
-No markdown.
-No code fences.
-No explanation before or after the JSON.
 
-Use exactly this schema:
+Use exactly this structure:
 
 {
-  "vendor_name": "string or null",
-  "invoice_number": "string or null",
-  "date": "YYYY-MM-DD or null",
-  "due_date": "YYYY-MM-DD or null",
-  "subtotal": "number or null",
-  "tax_amount": "number or null",
-  "total_amount": "number or null",
-  "currency": "string or null",
-  "category": "travel | food | office_supplies | software | marketing | utilities | rent | salaries | services | other",
-  "line_items": [
+  "documents": [
     {
-      "description": "string",
-      "quantity": "number or null",
-      "unit_price": "number or null",
-      "total": "number or null"
+      "vendor_name": "",
+      "invoice_number": "",
+      "date": "",
+      "due_date": null,
+
+      "subtotal": 0,
+      "discount": 0,
+      "tax_amount": 0,
+      "total_amount": 0,
+
+      "currency": "INR",
+      "category": "other",
+
+      "tax_details": {
+        "cgst": 0,
+        "sgst": 0,
+        "igst": 0,
+        "other_tax": 0
+      },
+
+      "line_items": [
+        {
+          "description": "",
+          "quantity": 0,
+          "unit_price": 0,
+          "total": 0
+        }
+      ],
+
+      "notes": null,
+
+      "source_pages": []
     }
-  ],
-  "notes": "string or null",
-  "gstin_vendor": "string or null",
-  "gstin_customer": "string or null",
-  "cgst_amount": "number or null",
-  "sgst_amount": "number or null",
-  "igst_amount": "number or null"
+  ]
 }
 
-RULES:
+==================================================
+EXTRACTION RULES
+==================================================
 
-1. Read every visible number carefully.
-2. Extract the actual GRAND TOTAL / FINAL AMOUNT.
-3. Do not return 0 unless the document explicitly shows 0.
-4. If a value is unavailable, use null.
-5. Preserve all line items you can identify.
-6. Convert dates to YYYY-MM-DD only when the date can be determined reliably.
-7. Currency should be INR for ₹ Indian invoices unless another currency is clearly shown.
-8. GST values must be extracted separately when present.
-9. For Indian GST invoices, identify CGST, SGST, IGST, GSTIN where available.
-10. Ensure subtotal + applicable taxes approximately matches total_amount when all values are available.
-11. Do not include commentary, confidence scores, or additional fields.
-12. Return syntactically valid JSON.
+1. Detect EVERY separate invoice.
+
+2. NEVER merge two invoices.
+
+3. If two invoices belong to the same vendor, they must still be separate documents.
+
+4. Extract the vendor/company name.
+
+5. Extract invoice number exactly as printed.
+
+6. Extract invoice date.
+
+7. Extract due date if available.
+
+8. Extract subtotal exactly as printed.
+
+9. Extract discount exactly as printed.
+
+10. Extract total tax.
+
+11. Extract final invoice total exactly as printed.
+
+12. Extract currency.
+
+13. Extract every line item.
+
+14. Extract quantity.
+
+15. Extract unit price.
+
+16. Extract line-item total.
+
+17. Extract CGST separately.
+
+18. Extract SGST separately.
+
+19. Extract IGST separately.
+
+20. Extract any other tax separately.
+
+21. Identify the invoice category where possible.
+
+22. Record the page number(s) containing each invoice.
+
+23. Do NOT invent information.
+
+24. Missing text = "".
+
+25. Missing numeric value = 0.
+
+26. Missing date = "".
+
+27. Missing due date = null.
+
+28. All numeric fields must be actual numbers.
+
+29. Do NOT include currency symbols inside numbers.
+
+30. Do NOT put commas inside numeric values.
+
+Correct:
+12200
+
+Incorrect:
+"₹12,200"
+
+31. Do NOT calculate totals yourself unless the document explicitly provides them.
+
+32. The printed invoice total is the source of truth.
+
+==================================================
+MULTI-PAGE RULE
+==================================================
+
+An invoice may occupy multiple pages.
+
+If pages 1 and 2 belong to the same invoice:
+
+"source_pages": [1, 2]
+
+Do NOT create two invoices.
+
+If page 1 contains invoice A and page 2 contains invoice B:
+
+Create two separate objects.
+
+==================================================
+IMPORTANT
+==================================================
+
+The final "documents" array must contain EVERY invoice detected in the uploaded file.
+
+If there are 10 invoices, return 10 objects.
+
+If there is 1 invoice, return 1 object.
 `
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": apiKey,
-        },
-        body: JSON.stringify({
-          contents: [
+    console.log("Calling Gemini...")
+
+    // ---------------------------------------------------------
+    // 8. CALL GEMINI
+    // ---------------------------------------------------------
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.6-flash",
+      // console.log("Gemini model:", "gemini-3.6-flash"),
+
+      contents: [
+        {
+          role: "user",
+
+          parts: [
             {
-              role: "user",
-              parts: [
-                {
-                  inlineData: {
-                    mimeType,
-                    data: base64,
-                  },
-                },
-                {
-                  text: prompt,
-                },
-              ],
+              inlineData: {
+                mimeType: file.type,
+                data: base64,
+              },
+            },
+
+            {
+              text: prompt,
             },
           ],
-          generationConfig: {
-            temperature: 0.1,
-            maxOutputTokens: 8192,
-            responseMimeType: "application/json",
-          },
-        }),
-      }
-    )
+        },
+      ],
 
-    if (!response.ok) {
-      const errorText = await response.text()
+      config: {
+        responseMimeType: "application/json",
+      },
+    })
 
-      console.error(
-        "[extract] Gemini API error:",
-        response.status,
-        errorText.slice(0, 1000)
-      )
+    console.log("Gemini responded")
 
-      let errorMessage = `Gemini API error: ${response.status}`
+    // ---------------------------------------------------------
+    // 9. GET RESPONSE
+    // ---------------------------------------------------------
 
-      if (response.status === 429) {
-        errorMessage =
-          "AI request limit reached. Please wait a moment and try again."
-      }
+    const text = response.text?.trim()
 
-      if (response.status === 503) {
-        errorMessage =
-          "AI model is currently busy. Please try again in a few moments."
-      }
+    if (!text) {
+      console.error("Gemini returned empty response")
 
       return NextResponse.json(
         {
-          error: errorMessage,
-          status: response.status,
+          success: false,
+          error: "Gemini returned an empty response",
         },
-        { status: response.status >= 500 ? 503 : response.status }
+        { status: 500 }
       )
     }
 
-    const result = await response.json()
+    console.log("Gemini response length:", text.length)
 
-    const text =
-      result.candidates?.[0]?.content?.parts
-        ?.map((part: { text?: string }) => part.text || "")
-        .join("") || ""
+    // ---------------------------------------------------------
+    // 10. PARSE JSON
+    // ---------------------------------------------------------
 
-    if (!text.trim()) {
-      console.error(
-        "[extract] Empty Gemini response:",
-        JSON.stringify(result).slice(0, 1000)
-      )
+    let parsed: any
+
+    try {
+      parsed = JSON.parse(text)
+    } catch (error) {
+      console.error("Gemini returned invalid JSON")
+      console.error(text)
 
       return NextResponse.json(
         {
-          error: "Gemini could not extract data from this document",
+          success: false,
+          error: "Gemini returned invalid JSON",
+          raw_response: text,
+        },
+        { status: 502 }
+      )
+    }
+
+    // ---------------------------------------------------------
+    // 11. VALIDATE DOCUMENT ARRAY
+    // ---------------------------------------------------------
+
+    if (!Array.isArray(parsed.documents)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Gemini response did not contain a documents array",
+          raw_response: parsed,
         },
         { status: 500 }
       )
     }
 
     console.log(
-      "[extract] Gemini response:",
-      text.slice(0, 1000)
+      "Invoices detected:",
+      parsed.documents.length
     )
 
-    let cleaned = text
-      .trim()
-      .replace(/^```json\s*/i, "")
-      .replace(/^```\s*/i, "")
-      .replace(/\s*```$/i, "")
-      .trim()
+    // ---------------------------------------------------------
+    // 12. NORMALIZE + CALCULATE
+    // ---------------------------------------------------------
 
-    try {
-      const extracted = JSON.parse(cleaned)
+    const documents: Invoice[] = parsed.documents.map(
+      (invoice: any) => {
 
-      console.log("[extract] SUCCESS:", {
-        vendor: extracted.vendor_name,
-        invoice: extracted.invoice_number,
-        total: extracted.total_amount,
-        items: extracted.line_items?.length || 0,
-      })
+        const subtotal =
+          Number(invoice.subtotal) || 0
 
-      return NextResponse.json({
-        success: true,
-        data: extracted,
-      })
-    } catch {
-      // Fallback: try to locate JSON object inside response
-      const jsonMatch = cleaned.match(/\{[\s\S]*\}/)
+        const discount =
+          Number(invoice.discount) || 0
 
-      if (jsonMatch) {
-        try {
-          const extracted = JSON.parse(jsonMatch[0])
+        const taxAmount =
+          Number(invoice.tax_amount) || 0
 
-          return NextResponse.json({
-            success: true,
-            data: extracted,
-          })
-        } catch {
-          // Continue to error response
+        const printedTotal =
+          Number(invoice.total_amount) || 0
+
+        // -----------------------------------------------------
+        // TAX DETAILS
+        // -----------------------------------------------------
+
+        const cgst =
+          Number(invoice.tax_details?.cgst) || 0
+
+        const sgst =
+          Number(invoice.tax_details?.sgst) || 0
+
+        const igst =
+          Number(invoice.tax_details?.igst) || 0
+
+        const otherTax =
+          Number(invoice.tax_details?.other_tax) || 0
+
+        // -----------------------------------------------------
+        // LINE ITEMS
+        // -----------------------------------------------------
+
+        const lineItems: LineItem[] =
+          Array.isArray(invoice.line_items)
+            ? invoice.line_items.map((item: any) => ({
+                description:
+                  typeof item.description === "string"
+                    ? item.description
+                    : "",
+
+                quantity:
+                  Number(item.quantity) || 0,
+
+                unit_price:
+                  Number(item.unit_price) || 0,
+
+                total:
+                  Number(item.total) || 0,
+              }))
+            : []
+
+        // -----------------------------------------------------
+        // DETERMINISTIC CALCULATION
+        // -----------------------------------------------------
+
+        const calculatedTotal =
+          subtotal -
+          discount +
+          taxAmount
+
+        const difference =
+          Math.round(
+            (printedTotal - calculatedTotal) *
+              100
+          ) / 100
+
+        const validationStatus =
+          Math.abs(difference) <= 1
+            ? "verified"
+            : "review"
+
+        return {
+          vendor_name:
+            typeof invoice.vendor_name === "string"
+              ? invoice.vendor_name
+              : "",
+
+          invoice_number:
+            typeof invoice.invoice_number === "string"
+              ? invoice.invoice_number
+              : "",
+
+          date:
+            typeof invoice.date === "string"
+              ? invoice.date
+              : "",
+
+          due_date:
+            typeof invoice.due_date === "string"
+              ? invoice.due_date
+              : null,
+
+          subtotal,
+
+          discount,
+
+          tax_amount: taxAmount,
+
+          total_amount: printedTotal,
+
+          currency:
+            typeof invoice.currency === "string"
+              ? invoice.currency
+              : "INR",
+
+          category:
+            typeof invoice.category === "string"
+              ? invoice.category
+              : "other",
+
+          tax_details: {
+            cgst,
+            sgst,
+            igst,
+            other_tax: otherTax,
+          },
+
+          line_items: lineItems,
+
+          notes:
+            typeof invoice.notes === "string"
+              ? invoice.notes
+              : null,
+
+          source_pages:
+            Array.isArray(invoice.source_pages)
+              ? invoice.source_pages
+                  .map((page: any) =>
+                    Number(page)
+                  )
+                  .filter(
+                    (page: number) =>
+                      Number.isFinite(page)
+                  )
+              : [],
+
+          validation: {
+            calculated_total: calculatedTotal,
+            difference,
+            status: validationStatus,
+          },
         }
       }
+    )
 
-      console.error(
-        "[extract] Failed to parse JSON:",
-        cleaned.slice(0, 1000)
-      )
+    // ---------------------------------------------------------
+    // 13. BATCH TOTALS
+    // ---------------------------------------------------------
 
-      return NextResponse.json(
-        {
-          error: "Failed to parse AI extraction response",
-          raw: cleaned.slice(0, 500),
-        },
-        { status: 500 }
-      )
+    const batchSubtotal = documents.reduce(
+      (sum, invoice) =>
+        sum + invoice.subtotal,
+      0
+    )
+
+    const batchDiscount = documents.reduce(
+      (sum, invoice) =>
+        sum + invoice.discount,
+      0
+    )
+
+    const batchTax = documents.reduce(
+      (sum, invoice) =>
+        sum + invoice.tax_amount,
+      0
+    )
+
+    const batchTotal = documents.reduce(
+      (sum, invoice) =>
+        sum + invoice.total_amount,
+      0
+    )
+
+    const verifiedCount = documents.filter(
+      (invoice) =>
+        invoice.validation.status ===
+        "verified"
+    ).length
+
+    const reviewCount = documents.filter(
+      (invoice) =>
+        invoice.validation.status ===
+        "review"
+    ).length
+
+    // ---------------------------------------------------------
+    // 14. FINAL RESPONSE
+    // ---------------------------------------------------------
+
+    const result = {
+      file_name: file.name,
+
+      invoice_count: documents.length,
+
+      documents,
+
+      summary: {
+        subtotal: batchSubtotal,
+        discount: batchDiscount,
+        tax: batchTax,
+        total: batchTotal,
+
+        verified: verifiedCount,
+
+        needs_review: reviewCount,
+      },
     }
+
+    console.log("========================================")
+    console.log(
+      "EXTRACTION COMPLETE:",
+      documents.length,
+      "invoice(s)"
+    )
+    console.log("SUMMARY:", result.summary)
+    console.log("========================================")
+
+    return NextResponse.json({
+      success: true,
+      data: result,
+    })
+
   } catch (error: any) {
-    console.error("[extract] Server error:", error)
+
+    console.error("========================================")
+    console.error("INVOICE EXTRACTION ERROR")
+    console.error(error)
+    console.error("========================================")
 
     return NextResponse.json(
       {
-        error: error?.message || "Internal server error",
+        success: false,
+        error:
+          error?.message ||
+          "Invoice extraction failed",
       },
       { status: 500 }
     )

@@ -26,7 +26,7 @@ export default function ReportsPage() {
   const [range, setRange] = useState<DateRange>("30d")
   const [invoices, setInvoices] = useState<any[]>([])
   const [expenses, setExpenses] = useState<any[]>([])
-  const [customers, setCustomers] = useState<any[]>([])
+  const [vendors, setVendors] = useState<any[]>([])
   const supabase = createClient()
 
   useEffect(() => {
@@ -35,13 +35,13 @@ export default function ReportsPage() {
       if (!user) return
 
       const [{ data: inv }, { data: exp }, { data: cust }] = await Promise.all([
-        supabase.from("invoices").select("*, customers(name)").eq("user_id", user.id).order("created_at", { ascending: false }),
+        supabase.from("invoices").select("*, vendors(name)").eq("user_id", user.id).order("created_at", { ascending: false }),
         supabase.from("expenses").select("*").eq("user_id", user.id).order("date", { ascending: false }),
-        supabase.from("customers").select("id, name").eq("user_id", user.id),
+        supabase.from("vendors").select("id, name").eq("user_id", user.id),
       ])
       setInvoices(inv ?? [])
       setExpenses(exp ?? [])
-      setCustomers(cust ?? [])
+      setVendors(cust ?? [])
       setLoading(false)
     }
     load()
@@ -106,16 +106,16 @@ export default function ReportsPage() {
   }
   const maxMonthly = Math.max(...monthlyData.map(d => Math.max(d.revenue, d.expenses)), 1)
 
-  // Top customers
+  // Top vendors
   const custRevenue: Record<string, { name: string; total: number; count: number }> = {}
   fInv.filter(i => i.status === "paid").forEach(i => {
-    const name = i.customers?.name || "Unknown"
+    const name = i.vendors?.name || "Unknown"
     if (!custRevenue[name]) custRevenue[name] = { name, total: 0, count: 0 }
     custRevenue[name].total += Number(i.total_amount)
     custRevenue[name].count++
   })
-  const topCustomers = Object.values(custRevenue).sort((a, b) => b.total - a.total).slice(0, 5)
-  const maxCustRev = topCustomers[0]?.total || 1
+  const topVendors = Object.values(custRevenue).sort((a, b) => b.total - a.total).slice(0, 5)
+  const maxCustRev = topVendors[0]?.total || 1
 
   // Aging buckets
   const agingBuckets = { current: 0, "1-30": 0, "31-60": 0, "60+": 0 }
@@ -147,8 +147,8 @@ export default function ReportsPage() {
       ["Month", "Revenue", "Expenses"],
       ...monthlyData.map(d => [d.month, d.revenue, d.expenses]),
       [""],
-      ["Top Customer", "Revenue", "Invoices"],
-      ...topCustomers.map(c => [c.name, c.total, c.count]),
+      ["Top Vendor", "Revenue", "Invoices"],
+      ...topVendors.map(c => [c.name, c.total, c.count]),
     ]
     const csv = rows.map(r => r.map(v => `"${v}"`).join(",")).join("\n")
     const blob = new Blob([csv], { type: "text/csv" })
@@ -376,17 +376,17 @@ export default function ReportsPage() {
           )}
         </div>
 
-        {/* Top Customers */}
+        {/* Top Vendors */}
         <div className="bg-white/[0.03] border border-white/5 rounded-xl p-6">
           <div className="flex items-center gap-2 mb-4">
             <Users className="h-4 w-4 text-white/30" />
-            <h2 className="font-semibold">Top Customers</h2>
+            <h2 className="font-semibold">Top Vendors</h2>
           </div>
-          {topCustomers.length === 0 ? (
+          {topVendors.length === 0 ? (
             <p className="text-sm text-white/20 py-8 text-center">No paid invoices yet</p>
           ) : (
             <div className="space-y-4">
-              {topCustomers.map((c, i) => (
+              {topVendors.map((c, i) => (
                 <div key={c.name}>
                   <div className="flex items-center justify-between text-sm mb-1.5">
                     <div className="flex items-center gap-2">
