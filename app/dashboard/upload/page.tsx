@@ -486,6 +486,9 @@ export default function UploadPage() {
           // SAVE EXTRACTED COUNTERPARTY AS A REUSABLE VENDOR
           // =================================================
 
+          let vendorId:
+            string | null = null
+
           if (data.vendor_name?.trim()) {
             const vendorName = data.vendor_name.trim()
 
@@ -496,18 +499,25 @@ export default function UploadPage() {
               .ilike("name", vendorName)
               .maybeSingle()
 
-            if (!existingVendor) {
-              const { error: vendorError } = await supabase
-                .from("vendors")
-                .insert({
-                  user_id: user.id,
-                  name: vendorName,
-                  industry: data.category || null,
-                })
+            if (existingVendor) {
+              vendorId = existingVendor.id
+            } else {
+              const { data: newVendor, error: vendorError } =
+                await supabase
+                  .from("vendors")
+                  .insert({
+                    user_id: user.id,
+                    name: vendorName,
+                    industry: data.category || null,
+                  })
+                  .select("id")
+                  .single()
 
               if (vendorError) {
                 console.error("Vendor save error:", vendorError)
               }
+
+              vendorId = newVendor?.id ?? null
             }
           }
 
@@ -576,6 +586,9 @@ export default function UploadPage() {
 
               customer_id:
                 customerId,
+
+              vendor_id:
+                vendorId,
 
               invoice_number:
                 data.invoice_number ||
