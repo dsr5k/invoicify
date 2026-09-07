@@ -70,12 +70,25 @@ export async function POST(request: NextRequest) {
   const { data: existing, error: lookupError } = await lookup.maybeSingle()
   if (lookupError) return NextResponse.json({ error: lookupError.message }, { status: 500 })
 
-  const operation = existing
-    ? supabase.from("vendors").update(vendor).eq("id", existing.id).eq("user_id", user.id)
-    : supabase.from("vendors").insert(vendor)
+  if (existing) {
+    const { data, error } = await supabase
+      .from("vendors")
+      .update(vendor)
+      .eq("id", existing.id)
+      .eq("user_id", user.id)
+      .select(fields)
+      .single()
 
-  const { data, error } = await operation.select(fields).single()
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ vendor: data, created: false })
+  }
+
+  const { data, error } = await supabase
+    .from("vendors")
+    .insert(vendor)
+    .select(fields)
+    .single()
+
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  return NextResponse.json({ vendor: data, created: !existing }, { status: existing ? 200 : 201 })
+  return NextResponse.json({ vendor: data, created: true }, { status: 201 })
 }
