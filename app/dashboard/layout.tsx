@@ -116,7 +116,7 @@ export default async function DashboardLayout({
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-white flex">
       {/* Sidebar */}
-      <aside className="w-56 border-r border-white/5 flex flex-col bg-[#0a0a0f]">
+      <aside className="w-16 md:w-56 shrink-0 border-r border-white/5 flex flex-col bg-[#0a0a0f]">
         {/* Logo */}
         <div className="h-14 px-4 flex items-center border-b border-white/5">
           <Link
@@ -127,7 +127,7 @@ export default async function DashboardLayout({
               <FileText className="h-4 w-4 text-white" />
             </div>
 
-            <span>Invoicify</span>
+            <span className="hidden md:inline">Invoicify</span>
           </Link>
         </div>
 
@@ -135,22 +135,22 @@ export default async function DashboardLayout({
         <div className="px-4 py-4">
           <Link href="/dashboard/invoices/new">
             <Button className="w-full bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-500 hover:to-violet-500 border-0 h-9 text-sm gap-2">
-              <Plus className="h-4 w-4" />
-              New Invoice
+              <Plus className="h-4 w-4 shrink-0" />
+              <span className="hidden md:inline">New Invoice</span>
             </Button>
           </Link>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-3 space-y-1">
+        <nav className="flex-1 overflow-y-auto px-2 md:px-3 space-y-1">
           {navItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-white/50 hover:text-white hover:bg-white/5 transition-all"
+              className="flex items-center justify-center md:justify-start gap-3 px-3 py-2 rounded-lg text-sm text-white/50 hover:text-white hover:bg-white/5 transition-all"
             >
-              <item.icon className="h-4 w-4" />
-              {item.label}
+              <item.icon className="h-4 w-4 shrink-0" />
+              <span className="hidden md:inline">{item.label}</span>
             </Link>
           ))}
         </nav>
@@ -162,7 +162,7 @@ export default async function DashboardLayout({
               {(profile?.business_name ?? user.email ?? "U")[0].toUpperCase()}
             </div>
 
-            <div className="flex-1 min-w-0">
+            <div className="hidden md:block flex-1 min-w-0">
               <p className="text-sm font-medium truncate">
                 {profile?.business_name ?? "My Business"}
               </p>
