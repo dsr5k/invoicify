@@ -10,6 +10,47 @@ import {
   Settings,
   Plus,
   Sparkles,
+  Bot,
+  CheckSquare,
+  CreditCard,
+  ClipboardList,
+  Landmark,
+  ShoppingCart,
+} from "lucide-react"
+import { Button } from "@/components/ui/button"
+
+const navItems = [
+  { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
+  { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/dashboard/invoices", label: "Invoices", icon: FileText },
+  { href: "/dashboard/vendors", label: "Vendors", icon: Users },
+  { href: "/dashboard/expenses", label: "Expenses", icon: Receipt },
+  { href: "/dashboard/payments", label: "Payments", icon: CreditCard },
+  { href: "/dashboard/purchase-orders", label: "Purchase Orders", icon: ShoppingCart },
+  { href: "/dashboard/approvals", label: "Approvals", icon: CheckSquare },
+  { href: "/dashboard/gst-compliance", label: "GST Compliance", icon: Landmark },
+  { href: "/dashboard/reports", label: "Reports", icon: BarChart3 },
+  { href: "/dashboard/automations", label: "Automations", icon: Bot },
+  { href: "/dashboard/settings", label: "Settings", icon: Settings },
+  { href: "/dashboard/upload", label: "AI Upload", icon: Sparkles },
+]mport Link from "next/link"
+import { redirect } from "next/navigation"
+import { createClient } from "@/app/utils/supabase/server"
+import {
+  FileText,
+  LayoutDashboard,
+  Users,
+  Receipt,
+  BarChart3,
+  Settings,
+  Plus,
+  Sparkles,
+  Bot,
+  CheckSquare,
+  CreditCard,
+  ClipboardList,
+  Landmark,
+  ShoppingCart,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
