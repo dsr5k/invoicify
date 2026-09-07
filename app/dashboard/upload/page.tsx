@@ -483,7 +483,36 @@ export default function UploadPage() {
 
         try {
           // =================================================
-          // FIND / CREATE CUSTOMER
+          // SAVE EXTRACTED COUNTERPARTY AS A REUSABLE VENDOR
+          // =================================================
+
+          if (data.vendor_name?.trim()) {
+            const vendorName = data.vendor_name.trim()
+
+            const { data: existingVendor } = await supabase
+              .from("vendors")
+              .select("id")
+              .eq("user_id", user.id)
+              .ilike("name", vendorName)
+              .maybeSingle()
+
+            if (!existingVendor) {
+              const { error: vendorError } = await supabase
+                .from("vendors")
+                .insert({
+                  user_id: user.id,
+                  name: vendorName,
+                  industry: data.category || null,
+                })
+
+              if (vendorError) {
+                console.error("Vendor save error:", vendorError)
+              }
+            }
+          }
+
+          // =================================================
+          // FIND / CREATE CUSTOMER FOR EXISTING INVOICE FLOW
           // =================================================
 
           let customerId:
