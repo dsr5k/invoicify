@@ -23,6 +23,8 @@ alter table public.vendors add column if not exists industry text;
 alter table public.vendors add column if not exists state text;
 alter table public.vendors add column if not exists updated_at timestamptz not null default now();
 
+alter table public.invoices add column if not exists vendor_id uuid references public.vendors(id) on delete set null;
+
 create unique index if not exists vendors_user_name_unique
   on public.vendors (user_id, lower(name));
 
