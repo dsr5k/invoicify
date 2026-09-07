@@ -348,6 +348,7 @@ export function DashboardModule({ module }: { module: Module }) {
       { key: "name", label: "Vendor name", required: true },
       { key: "gstin", label: "GSTIN" },
       { key: "industry", label: "Industry" },
+      { key: "state", label: "GST state" },
       { key: "email", label: "Email", type: "email" },
       { key: "phone", label: "Phone" },
     ],
