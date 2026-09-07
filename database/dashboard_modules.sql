@@ -10,6 +10,7 @@ create table if not exists public.vendors (
   phone text,
   address text,
   industry text,
+  state text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -19,6 +20,7 @@ alter table public.vendors add column if not exists email text;
 alter table public.vendors add column if not exists phone text;
 alter table public.vendors add column if not exists address text;
 alter table public.vendors add column if not exists industry text;
+alter table public.vendors add column if not exists state text;
 alter table public.vendors add column if not exists updated_at timestamptz not null default now();
 
 create unique index if not exists vendors_user_name_unique
