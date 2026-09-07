@@ -8,9 +8,10 @@ type VendorPayload = {
   phone?: string | null
   address?: string | null
   industry?: string | null
+  state?: string | null
 }
 
-const fields = "id, name, gstin, email, phone, address, industry, created_at, updated_at"
+const fields = "id, name, gstin, email, phone, address, industry, state, created_at, updated_at"
 
 const clean = (value: unknown) =>
   typeof value === "string" ? value.trim() || null : null
@@ -60,6 +61,7 @@ export async function POST(request: NextRequest) {
     phone: clean(body.phone),
     address: clean(body.address),
     industry: clean(body.industry),
+    state: clean(body.state),
   }
 
   let lookup = supabase.from("vendors").select("id").eq("user_id", user.id)
